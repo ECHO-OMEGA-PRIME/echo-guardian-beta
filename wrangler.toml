@@ -1,0 +1,41 @@
+name = "echo-guardian-beta"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+[vars]
+GUARDIAN_ID = "beta"
+PARTNER_URL = "https://echo-guardian-alpha.bmcii1976.workers.dev"
+PARTNER_NAME = "echo-guardian-alpha"
+CLOUDFLARE_ACCOUNT_ID = "b9af3a4bf161132bb7e5d3d365fb8bb0"
+GITHUB_ORG = "ECHO-OMEGA-PRIME"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "echo-guardian-beta"
+database_id = "88c5580c-6a10-4b22-8a81-f985753f24c7"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "127fb940c035408d9278ee895d266491"
+
+[triggers]
+crons = ["2/5 * * * *", "15/30 * * * *", "0 3/6 * * *", "0 9 * * *"]
+
+[[services]]
+binding = "SVC_SHARED_BRAIN"
+service = "echo-shared-brain"
+
+[[services]]
+binding = "SVC_ENGINE_RUNTIME"
+service = "echo-engine-runtime"
+
+[[services]]
+binding = "SVC_BUILDER"
+service = "echo-autonomous-builder"
+
+[[services]]
+binding = "SVC_DAEMON"
+service = "echo-autonomous-daemon"
+
+[[services]]
+binding = "SVC_PARTNER"
+service = "echo-guardian-alpha"
