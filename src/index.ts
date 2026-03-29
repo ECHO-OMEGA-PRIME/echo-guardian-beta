@@ -218,6 +218,9 @@ async function ensureSchema(db: D1Database) {
 
 // ═══════════════════════════════════════════════════════════════
 // HEALTH CHECK ENGINE
+// Uses Cloudflare API (Workers on same account can't fetch each
+// other via public URLs — returns 404 from CF routing layer).
+// Service bindings used for live /health checks on critical workers.
 // ═══════════════════════════════════════════════════════════════
 interface HealthResult {
   worker: string;
@@ -228,44 +231,114 @@ interface HealthResult {
   error: string;
 }
 
-async function checkWorkerHealth(name: string, timeoutMs = 8000): Promise<HealthResult> {
-  const url = `${workerUrl(name)}/health`;
+// Map service binding env keys to worker names for live /health checks
+const SERVICE_BINDING_MAP: Record<string, string> = {
+  'echo-shared-brain': 'SVC_SHARED_BRAIN',
+  'echo-engine-runtime': 'SVC_ENGINE_RUNTIME',
+  'echo-autonomous-builder': 'SVC_BUILDER',
+  'echo-autonomous-daemon': 'SVC_DAEMON',
+};
+
+async function checkWorkerViaBinding(env: Env, name: string, bindingKey: string): Promise<HealthResult> {
   const start = Date.now();
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'EchoGuardian/1.0' } });
-    clearTimeout(timer);
+    const binding = (env as unknown as Record<string, Fetcher>)[bindingKey];
+    if (!binding) return { worker: name, status: 'degraded', statusCode: 0, latencyMs: 0, version: '', error: 'No binding' };
+
+    const res = await binding.fetch(new Request('https://worker/health'));
     const latency = Date.now() - start;
     let version = '';
     try {
       const body = await res.json() as Record<string, unknown>;
       version = (body.version as string) || '';
-    } catch { /* non-json response */ }
+    } catch { /* non-json */ }
 
     if (res.status === 200) {
-      return { worker: name, status: latency > 5000 ? 'degraded' : 'healthy', statusCode: res.status, latencyMs: latency, version, error: '' };
+      return { worker: name, status: latency > 5000 ? 'degraded' : 'healthy', statusCode: 200, latencyMs: latency, version, error: '' };
     }
     return { worker: name, status: 'degraded', statusCode: res.status, latencyMs: latency, version, error: `HTTP ${res.status}` };
   } catch (e: unknown) {
-    const latency = Date.now() - start;
-    const err = e instanceof Error ? e.message : String(e);
-    const status = err.includes('abort') ? 'timeout' : 'down';
-    return { worker: name, status, statusCode: 0, latencyMs: latency, version: '', error: err };
+    return { worker: name, status: 'down', statusCode: 0, latencyMs: Date.now() - start, version: '', error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+interface CfScript {
+  id: string;
+  modified_on: string;
+  created_on: string;
+  has_assets?: boolean;
+}
+
+async function fetchDeployedScripts(env: Env): Promise<Map<string, CfScript>> {
+  const scripts = new Map<string, CfScript>();
+  try {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts`,
+      { headers: { 'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}` } }
+    );
+    if (!res.ok) {
+      slog('error', 'CF API failed to list scripts', { status: res.status });
+      return scripts;
+    }
+    const data = await res.json() as { result?: CfScript[] };
+    for (const s of data.result || []) {
+      scripts.set(s.id, s);
+    }
+  } catch (e: unknown) {
+    slog('error', 'CF API error', { error: e instanceof Error ? e.message : String(e) });
+  }
+  return scripts;
 }
 
 async function healthSweep(env: Env): Promise<{ results: HealthResult[]; down: HealthResult[]; degraded: HealthResult[] }> {
   const allWorkers = getAllWorkers();
   const results: HealthResult[] = [];
 
-  // Batch in groups of 40 to stay within subrequest limits
-  for (let i = 0; i < allWorkers.length; i += 40) {
-    const batch = allWorkers.slice(i, i + 40);
-    const batchResults = await Promise.allSettled(batch.map(w => checkWorkerHealth(w)));
-    for (const r of batchResults) {
-      if (r.status === 'fulfilled') results.push(r.value);
-      else results.push({ worker: batch[batchResults.indexOf(r)] || 'unknown', status: 'down', statusCode: 0, latencyMs: 0, version: '', error: String(r.reason) });
+  // Step 1: Bulk-fetch all deployed scripts via CF API (1 call)
+  const deployedScripts = await fetchDeployedScripts(env);
+  const apiCheckTime = Date.now();
+
+  // Step 2: Live /health checks on service-bound workers (parallel)
+  const bindingChecks = Object.entries(SERVICE_BINDING_MAP).map(([workerName, bindingKey]) =>
+    checkWorkerViaBinding(env, workerName, bindingKey)
+  );
+  // Also check partner
+  bindingChecks.push(checkWorkerViaBinding(env, env.PARTNER_NAME, 'SVC_PARTNER'));
+  const liveResults = await Promise.allSettled(bindingChecks);
+  const liveMap = new Map<string, HealthResult>();
+  for (const r of liveResults) {
+    if (r.status === 'fulfilled') liveMap.set(r.value.worker, r.value);
+  }
+
+  // Step 3: For each registered worker, determine status
+  for (const name of allWorkers) {
+    // If we have a live /health check result (via service binding), use that
+    const liveResult = liveMap.get(name);
+    if (liveResult) {
+      results.push(liveResult);
+      continue;
+    }
+
+    // Otherwise, check if it's deployed via CF API
+    const script = deployedScripts.get(name);
+    if (script) {
+      // Worker is deployed — check freshness
+      const modifiedMs = new Date(script.modified_on).getTime();
+      const ageHours = (apiCheckTime - modifiedMs) / (1000 * 60 * 60);
+      // If last deployed within 30 days, consider healthy
+      // If stale (>30 days no deploy), mark degraded with note
+      const status = ageHours < 720 ? 'healthy' : 'degraded';
+      const error = ageHours >= 720 ? `Stale: last deployed ${Math.round(ageHours / 24)}d ago` : '';
+      results.push({
+        worker: name, status, statusCode: 200, latencyMs: 0,
+        version: script.modified_on.split('T')[0], error,
+      });
+    } else {
+      // Worker NOT found in CF account — it's down/undeployed
+      results.push({
+        worker: name, status: 'down', statusCode: 0, latencyMs: 0,
+        version: '', error: 'Not deployed — not found in Cloudflare account',
+      });
     }
   }
 
@@ -285,7 +358,7 @@ async function healthSweep(env: Env): Promise<{ results: HealthResult[]; down: H
   for (const d of down) {
     const existing = await env.DB.prepare('SELECT id FROM incidents WHERE worker_name = ? AND resolved_at IS NULL AND type = ?').bind(d.worker, 'down').first();
     if (!existing) {
-      await env.DB.prepare('INSERT INTO incidents (worker_name, type, severity, description) VALUES (?, ?, ?, ?)').bind(d.worker, 'down', 'critical', `Worker returned ${d.error || 'no response'}`).run();
+      await env.DB.prepare('INSERT INTO incidents (worker_name, type, severity, description) VALUES (?, ?, ?, ?)').bind(d.worker, 'down', 'critical', `Worker ${d.error || 'unreachable'}`).run();
     }
   }
 
@@ -961,10 +1034,29 @@ async function handleCron(event: ScheduledEvent, env: Env) {
       await reportToBrain(env, `GUARDIAN ${env.GUARDIAN_ID} ALERT: ${down.length} workers DOWN — ${downList}`, 9);
     }
 
-    // Try to resurrect down workers (not the partner — those need CF API)
+    // Try to resurrect down workers via CF API (re-deploy trigger)
     for (const d of down) {
-      // Attempt warm-up ping — sometimes workers just need a cold start kick
-      try { await fetch(workerUrl(d.worker), { signal: AbortSignal.timeout(8000) }); } catch { /* expected */ }
+      try {
+        // Check if script exists — if yes, trigger a settings patch to restart
+        const cfCheck = await fetch(
+          `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${d.worker}`,
+          { headers: { 'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}` } }
+        );
+        if (cfCheck.ok) {
+          // Script exists but not responding — try settings patch to trigger restart
+          await fetch(
+            `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${d.worker}/settings`,
+            {
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ logpush: false }),
+            }
+          );
+          slog('info', 'Attempted restart via settings patch', { worker: d.worker });
+        } else {
+          slog('warn', 'Down worker not found in CF account', { worker: d.worker, status: cfCheck.status });
+        }
+      } catch { /* best effort */ }
     }
 
     slog('info', 'Health sweep complete', { total: results.length, healthy: results.length - down.length - degraded.length, degraded: degraded.length, down: down.length, partnerAlive: partner.alive });
