@@ -212,7 +212,8 @@ def test_migration_finalization_is_evidence_gated_and_exact():
     assert "btrim(source_sha256)=rescued_sha" in sql
     assert "rollback.active_release=production.candidate_release" in sql
     assert "rollback_provenance.candidate_release<>production.candidate_release" in sql
-    assert "production.candidate_release=active_release" in sql
+    assert "production.candidate_release=expected_active_release" in sql
+    assert "expected_active_release constant text" in sql
     assert "active_attempt.recorded_at >= rollback_staging.recorded_at" in sql
     assert "attestation.recorded_at >= now() - interval '5 minutes'" in sql
     assert "RAISE EXCEPTION" in sql

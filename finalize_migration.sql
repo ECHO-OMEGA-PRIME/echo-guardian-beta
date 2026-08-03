@@ -23,14 +23,14 @@ VALUES
 DO $finalize$
 DECLARE
     catalog_rows integer;
-    active_release constant text := current_setting('echo.guardian.active_release');
+    expected_active_release constant text := current_setting('echo.guardian.active_release');
     rescued_sha constant text := '5f7afb16ed7daea81022ffb0e458e369f5d425a7f82c0636f06e653d19b15f3c';
     normalized_sha constant text := '134eabf49017cc742c5b13bfca339c271f846bc2319b704a191509c69339e3d8';
     repository_sha constant text := '08e3d47f0234986de30873c8ad53cba761446cc54e93207ca19a9160b561ba06';
     d1_sha constant text := 'b0e57c3be6a3a0de9f590f369f911ea5fadd7918d533492a285a12b1d73c5e51';
     d1_counts constant jsonb := '{"creations":0,"enhancement_queue":38,"enhancements":0,"guardian_state":0,"health_checks":461520,"incidents":0,"partner_health":3202}'::jsonb;
 BEGIN
-    IF active_release !~ '^/home/forge/echo-guardian-beta/releases/[A-Za-z0-9._-]+$' THEN
+    IF expected_active_release !~ '^/home/forge/echo-guardian-beta/releases/[A-Za-z0-9._-]+$' THEN
         RAISE EXCEPTION 'guardian migration finalization refused: invalid active release path';
     END IF;
 
@@ -99,7 +99,7 @@ BEGIN
            AND attestation.recorded_at >= now() - interval '5 minutes'
          WHERE provenance.event_name='provenance_verified'
            AND provenance.health_state='verified'
-           AND production.candidate_release=active_release
+           AND production.candidate_release=expected_active_release
            AND provenance.rescued_source_sha256=rescued_sha
            AND provenance.normalized_source_sha256=normalized_sha
            AND provenance.repository_source_sha256=repository_sha
@@ -140,7 +140,7 @@ BEGIN
                'forge_service_dir', '/home/forge/echo-guardian-beta',
                'forge_unit', 'echo-guardian-beta.service',
                'migration_contract', '/home/forge/echo-guardian-beta/current/migration_contract.json',
-               'active_release', active_release,
+               'active_release', expected_active_release,
                'rescued_source_sha256', rescued_sha,
                'normalized_source_sha256', normalized_sha,
                'repository_source_sha256', repository_sha,
