@@ -101,8 +101,25 @@ def test_import_decision_is_non_destructive():
     assert import_d1.decide_import_mode("a" * 64, counts, counts, None) == "import"
     populated = dict(counts)
     populated["health_checks"] = 1
-    with pytest.raises(RuntimeError, match="unreceipted"):
+    with pytest.raises(RuntimeError, match="different counts"):
         import_d1.decide_import_mode("a" * 64, counts, populated, None)
+    exact_source = dict(populated)
+    assert (
+        import_d1.decide_import_mode(
+            "a" * 64, exact_source, populated, None
+        )
+        == "adopt"
+    )
+
+
+def test_typed_row_digest_is_deterministic_and_value_sensitive():
+    rows = [(1, "1", None), (2, "line\nbreak", "")]
+    digest, count = import_d1._rows_sha256(rows)
+    same_digest, same_count = import_d1._rows_sha256(iter(rows))
+    changed_digest, _ = import_d1._rows_sha256([(1, 1, None), rows[1]])
+    assert (digest, count) == (same_digest, same_count)
+    assert count == 2
+    assert digest != changed_digest
 
 
 def test_receipted_import_allows_growth_but_rejects_regression():

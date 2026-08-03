@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Import the rescued Guardian Beta D1 SQLite database into PostgreSQL.
 
-The importer is intentionally fail-closed and non-destructive.  It imports only
-into an empty target schema, records an immutable source receipt, and treats
-later runs as verification-only.  Once a receipt exists, target tables may have
-grown through normal runtime writes, but they may never contain fewer rows than
-the verified rescue seed.
+The importer is intentionally fail-closed and non-destructive.  It imports into
+an empty target schema, or adopts an interrupted unreceipted seed only after a
+streaming row-for-row digest proves it is identical to the rescued database.
+It then records an immutable source receipt and treats later runs as
+verification-only.  Once a receipt exists, target tables may have grown through
+normal runtime writes, but they may never contain fewer rows than the verified
+rescue seed.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 
 SCHEMA = "cf_echo_guardian_beta"
@@ -220,9 +222,12 @@ def decide_import_mode(
     if receipt is None:
         populated = {name: count for name, count in target_counts.items() if count != 0}
         if populated:
-            raise RuntimeError(
-                "target schema contains unreceipted rows; refusing destructive replacement"
-            )
+            if dict(target_counts) != dict(source_counts):
+                raise RuntimeError(
+                    "target schema contains unreceipted rows with different counts; "
+                    "refusing destructive replacement"
+                )
+            return "adopt"
         return "import"
     receipt_counts = {
         name: int((receipt.get("source_counts") or {}).get(name, -1))
@@ -273,6 +278,55 @@ def _normalize_value(value: Any) -> Any:
     if isinstance(value, (int, float, str)):
         return value
     raise TypeError(f"unsupported SQLite storage class: {type(value).__name__}")
+
+
+def _rows_sha256(rows: Iterable[Sequence[Any]]) -> tuple[str, int]:
+    """Hash typed rows without logging or retaining their restricted values."""
+    digest = hashlib.sha256()
+    count = 0
+    for row in rows:
+        encoded = json.dumps(
+            [_normalize_value(value) for value in row],
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+        count += 1
+    return digest.hexdigest(), count
+
+
+def _verify_seed_rows(
+    sqlite_connection: sqlite3.Connection,
+    pg_connection: Any,
+    sql_module: Any,
+    schema: str,
+) -> None:
+    """Prove every ordered target row matches the source before receipting it."""
+    for table, columns in TABLE_COLUMNS.items():
+        sqlite_columns = ", ".join(f'"{column}"' for column in columns)
+        order_column = columns[0]
+        source_rows = sqlite_connection.execute(
+            f'SELECT {sqlite_columns} FROM "{table}" ORDER BY "{order_column}"'
+        )
+        source_digest, source_count = _rows_sha256(source_rows)
+        with pg_connection.cursor(name=f"guardian_seed_{table}") as target_cursor:
+            target_cursor.itersize = 2000
+            target_cursor.execute(
+                sql_module.SQL("SELECT {} FROM {}.{} ORDER BY {}").format(
+                    sql_module.SQL(", ").join(map(sql_module.Identifier, columns)),
+                    sql_module.Identifier(schema),
+                    sql_module.Identifier(table),
+                    sql_module.Identifier(order_column),
+                )
+            )
+            target_digest, target_count = _rows_sha256(target_cursor)
+        if source_count != target_count or source_digest != target_digest:
+            raise RuntimeError(
+                f"unreceipted target differs from the D1 rescue for {table}; "
+                "refusing adoption"
+            )
 
 
 def _import_rows(
@@ -357,12 +411,14 @@ def migrate(
                         sql,
                         schema,
                     )
-                    _advance_identity_sequences(cursor, sql, schema)
                     imported_counts = _postgres_counts(cursor, sql, schema)
                     if imported_counts != dict(expected_counts):
                         raise RuntimeError(
                             "PostgreSQL counts do not match the D1 rescue after import"
                         )
+                if mode in {"import", "adopt"}:
+                    _verify_seed_rows(sqlite_connection, pg_connection, sql, schema)
+                    _advance_identity_sequences(cursor, sql, schema)
                     cursor.execute(
                         sql.SQL(
                             "INSERT INTO {}.d1_import_receipts "
