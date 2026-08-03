@@ -100,6 +100,147 @@ CREATE TABLE IF NOT EXISTS cf_echo_guardian_beta.partner_health (
     checked_at text DEFAULT ''
 );
 
+-- Reconcile an interrupted legacy preflight that created the seven rescue
+-- tables as unconstrained text.  Every cast and constraint is transactional;
+-- invalid, duplicate, or missing values abort the deploy without deleting the
+-- rescued rows.  The importer subsequently proves row-for-row D1 equivalence
+-- before it adopts this state and writes a receipt.
+DO $repair_rescue_tables$
+DECLARE
+    repair record;
+    current_type text;
+    relation_name text;
+    identity_kind "char";
+BEGIN
+    FOR repair IN
+        SELECT * FROM (VALUES
+            ('creations', 'id', 'bigint'),
+            ('creations', 'lines_of_code', 'integer'),
+            ('creations', 'deployed', 'integer'),
+            ('enhancement_queue', 'id', 'bigint'),
+            ('enhancement_queue', 'priority', 'integer'),
+            ('enhancements', 'id', 'bigint'),
+            ('enhancements', 'deployed', 'integer'),
+            ('enhancements', 'reverted', 'integer'),
+            ('health_checks', 'id', 'bigint'),
+            ('health_checks', 'status_code', 'integer'),
+            ('health_checks', 'latency_ms', 'integer'),
+            ('incidents', 'id', 'bigint'),
+            ('incidents', 'auto_resolved', 'integer'),
+            ('partner_health', 'id', 'bigint'),
+            ('partner_health', 'latency_ms', 'integer'),
+            ('partner_health', 'consecutive_failures', 'integer'),
+            ('partner_health', 'resurrection_attempted', 'integer')
+        ) AS columns_to_repair(table_name, column_name, target_type)
+    LOOP
+        SELECT format_type(attribute.atttypid, attribute.atttypmod)
+          INTO current_type
+          FROM pg_attribute AS attribute
+         WHERE attribute.attrelid = format(
+                   'cf_echo_guardian_beta.%I', repair.table_name
+               )::regclass
+           AND attribute.attname = repair.column_name
+           AND NOT attribute.attisdropped;
+        IF current_type IS DISTINCT FROM repair.target_type THEN
+            EXECUTE format(
+                'ALTER TABLE cf_echo_guardian_beta.%I '
+                'ALTER COLUMN %I TYPE %s USING %I::%s',
+                repair.table_name,
+                repair.column_name,
+                repair.target_type,
+                repair.column_name,
+                repair.target_type
+            );
+        END IF;
+    END LOOP;
+
+    ALTER TABLE cf_echo_guardian_beta.creations
+        ALTER COLUMN worker_name SET NOT NULL,
+        ALTER COLUMN deployed SET DEFAULT 0,
+        ALTER COLUMN created_at SET DEFAULT '';
+    ALTER TABLE cf_echo_guardian_beta.enhancement_queue
+        ALTER COLUMN worker_name SET NOT NULL,
+        ALTER COLUMN type SET NOT NULL,
+        ALTER COLUMN priority SET DEFAULT 5,
+        ALTER COLUMN status SET DEFAULT 'pending',
+        ALTER COLUMN created_at SET DEFAULT '';
+    ALTER TABLE cf_echo_guardian_beta.enhancements
+        ALTER COLUMN worker_name SET NOT NULL,
+        ALTER COLUMN type SET NOT NULL,
+        ALTER COLUMN deployed SET DEFAULT 0,
+        ALTER COLUMN reverted SET DEFAULT 0,
+        ALTER COLUMN created_at SET DEFAULT '';
+    ALTER TABLE cf_echo_guardian_beta.guardian_state
+        ALTER COLUMN updated_at SET DEFAULT '';
+    ALTER TABLE cf_echo_guardian_beta.health_checks
+        ALTER COLUMN worker_name SET NOT NULL,
+        ALTER COLUMN status SET NOT NULL,
+        ALTER COLUMN checked_at SET DEFAULT '';
+    ALTER TABLE cf_echo_guardian_beta.incidents
+        ALTER COLUMN worker_name SET NOT NULL,
+        ALTER COLUMN type SET NOT NULL,
+        ALTER COLUMN severity SET NOT NULL,
+        ALTER COLUMN severity SET DEFAULT 'warning',
+        ALTER COLUMN auto_resolved SET DEFAULT 0,
+        ALTER COLUMN created_at SET DEFAULT '';
+    ALTER TABLE cf_echo_guardian_beta.partner_health
+        ALTER COLUMN partner_name SET NOT NULL,
+        ALTER COLUMN status SET NOT NULL,
+        ALTER COLUMN consecutive_failures SET DEFAULT 0,
+        ALTER COLUMN resurrection_attempted SET DEFAULT 0,
+        ALTER COLUMN checked_at SET DEFAULT '';
+
+    FOR relation_name IN
+        SELECT unnest(ARRAY[
+            'creations', 'enhancement_queue', 'enhancements',
+            'health_checks', 'incidents', 'partner_health'
+        ])
+    LOOP
+        IF NOT EXISTS (
+            SELECT 1
+              FROM pg_constraint
+             WHERE conrelid = format(
+                       'cf_echo_guardian_beta.%I', relation_name
+                   )::regclass
+               AND contype = 'p'
+        ) THEN
+            EXECUTE format(
+                'ALTER TABLE cf_echo_guardian_beta.%I '
+                'ADD CONSTRAINT %I PRIMARY KEY (id)',
+                relation_name,
+                relation_name || '_pkey'
+            );
+        END IF;
+
+        SELECT attribute.attidentity
+          INTO identity_kind
+          FROM pg_attribute AS attribute
+         WHERE attribute.attrelid = format(
+                   'cf_echo_guardian_beta.%I', relation_name
+               )::regclass
+           AND attribute.attname = 'id'
+           AND NOT attribute.attisdropped;
+        IF identity_kind = '' THEN
+            EXECUTE format(
+                'ALTER TABLE cf_echo_guardian_beta.%I '
+                'ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY',
+                relation_name
+            );
+        END IF;
+    END LOOP;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = 'cf_echo_guardian_beta.guardian_state'::regclass
+           AND contype = 'p'
+    ) THEN
+        ALTER TABLE cf_echo_guardian_beta.guardian_state
+            ADD CONSTRAINT guardian_state_pkey PRIMARY KEY (key);
+    END IF;
+END
+$repair_rescue_tables$;
+
 CREATE TABLE IF NOT EXISTS cf_echo_guardian_beta.job_runs (
     run_id uuid PRIMARY KEY,
     job_name text NOT NULL,
