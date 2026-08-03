@@ -140,7 +140,9 @@ def test_deploy_gate_contains_staging_and_rollback():
     assert 'install -d -m 0755 "$BASE_DIR" "$RELEASES_DIR"' in text
     assert 'mkdir -m 0755 "$RELEASE_DIR"' in text
     assert 'psql --single-transaction -v ON_ERROR_STOP=1 -d echo' in text
-    assert '"$RELEASE_DIR/import_d1.py"' in text
+    assert 'systemd-run --quiet --wait --pipe --unit="$IMPORT_UNIT"' in text
+    assert '"$IMPORT_MOUNT/import_d1.py"' in text
+    assert '--property="BindReadOnlyPaths=$RELEASE_DIR:$IMPORT_MOUNT"' in text
     assert "NORMALIZED_SOURCE=" in text
     assert "INVENTORY_RESCUED_SHA=" in text
     assert 'date -u +%Y%m%dT%H%M%S%NZ' in text

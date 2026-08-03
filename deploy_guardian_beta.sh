@@ -17,6 +17,7 @@ TOKEN_DIR=/etc/echo/credentials/echo-guardian-beta
 TOKEN_FILE=$TOKEN_DIR/write-token
 RUNTIME_MOUNT=/opt/echo-guardian-beta-runtime
 STAGING_MOUNT=/opt/echo-guardian-beta-staging
+IMPORT_MOUNT=/opt/echo-guardian-beta-import
 TEST_PYTHON="${GUARDIAN_TEST_PYTHON:-/home/forge/echo-worker-server/venv/bin/python}"
 RELEASE_ID="$(date -u +%Y%m%dT%H%M%S%NZ)-$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || echo source)"
 RELEASE_DIR="$RELEASES_DIR/$RELEASE_ID"
@@ -227,10 +228,20 @@ if [ "$timestamp_parser_ok" != "t" ]; then
   echo "mixed-format timestamp parser verification failed" >&2
   exit 3
 fi
-sudo -u postgres /usr/bin/python3 "$RELEASE_DIR/import_d1.py" \
-  --sqlite "$D1_SQLITE" \
-  --contract "$RELEASE_DIR/migration_contract.json" \
-  --dsn dbname=echo >/dev/null
+IMPORT_UNIT="echo-guardian-beta-import-$RELEASE_ID"
+systemd-run --quiet --wait --pipe --unit="$IMPORT_UNIT" \
+  --property=Type=oneshot \
+  --property=User=postgres \
+  --property=Group=postgres \
+  --property="WorkingDirectory=$IMPORT_MOUNT" \
+  --property="BindReadOnlyPaths=$RELEASE_DIR:$IMPORT_MOUNT" \
+  --property=ProtectHome=tmpfs \
+  --property=NoNewPrivileges=yes \
+  /usr/bin/env /usr/bin/python3 "$IMPORT_MOUNT/import_d1.py" \
+    --sqlite "$D1_SQLITE" \
+    --contract "$IMPORT_MOUNT/migration_contract.json" \
+    --dsn dbname=echo >/dev/null
+systemctl reset-failed "$IMPORT_UNIT.service" >/dev/null 2>&1 || true
 verified_counts="$(sudo -u postgres psql -d echo -At -F '|' -c \
   "SELECT 'creations',count(*) FROM cf_echo_guardian_beta.creations UNION ALL SELECT 'enhancement_queue',count(*) FROM cf_echo_guardian_beta.enhancement_queue UNION ALL SELECT 'enhancements',count(*) FROM cf_echo_guardian_beta.enhancements UNION ALL SELECT 'guardian_state',count(*) FROM cf_echo_guardian_beta.guardian_state UNION ALL SELECT 'health_checks',count(*) FROM cf_echo_guardian_beta.health_checks UNION ALL SELECT 'incidents',count(*) FROM cf_echo_guardian_beta.incidents UNION ALL SELECT 'partner_health',count(*) FROM cf_echo_guardian_beta.partner_health ORDER BY 1")"
 log "additive schema and D1 import gate verified all seven source tables: $verified_counts"
