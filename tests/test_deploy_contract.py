@@ -23,6 +23,14 @@ def test_migration_contract_has_independent_identity_and_state_evidence():
             provenance["d1_sqlite_sha256"],
         }
     ) == 4
+    assert provenance["repository_typescript_sha256"] == (
+        "08e3d47f0234986de30873c8ad53cba761446cc54e93207ca19a9160b561ba06"
+    )
+    assert provenance["repository_windows_worktree_sha256"] == (
+        "b7d50e2fa3983984b56eed5c13699663b4a8221e4dcf4b98b112c9cf24ffb7e7"
+    )
+    assert "canonical Git blob bytes" in provenance["relationship"]
+    assert "non-authoritative evidence" in provenance["relationship"]
     coverage = contract["non_generic_route_coverage"]
     assert (coverage["source"], coverage["implemented"], coverage["percent"]) == (
         12,
@@ -191,7 +199,7 @@ def test_migration_finalization_is_evidence_gated_and_exact():
     assert "IF catalog_rows <> 1" in sql
     assert "5f7afb16ed7daea81022ffb0e458e369f5d425a7f82c0636f06e653d19b15f3c" in sql
     assert "134eabf49017cc742c5b13bfca339c271f846bc2319b704a191509c69339e3d8" in sql
-    assert "b7d50e2fa3983984b56eed5c13699663b4a8221e4dcf4b98b112c9cf24ffb7e7" in sql
+    assert "08e3d47f0234986de30873c8ad53cba761446cc54e93207ca19a9160b561ba06" in sql
     assert "b0e57c3be6a3a0de9f590f369f911ea5fadd7918d533492a285a12b1d73c5e51" in sql
     assert "source_counts=d1_counts" in sql
     assert "status='verified'" in sql

@@ -170,7 +170,7 @@ ACTUAL_NORMALIZED_SHA="$(sha256sum "$NORMALIZED_SOURCE" | awk '{print $1}')"
 INVENTORY_RESCUED_SHA="$(sudo -u postgres psql -d echo -Atc "SELECT btrim(source_sha256) FROM inventory.cf_migration_status WHERE lower(worker_name)=lower('echo-guardian-beta')")"
 if [ "$EXPECTED_RESCUED_SHA" != "5f7afb16ed7daea81022ffb0e458e369f5d425a7f82c0636f06e653d19b15f3c" ] || \
    [ "$EXPECTED_NORMALIZED_SHA" != "134eabf49017cc742c5b13bfca339c271f846bc2319b704a191509c69339e3d8" ] || \
-   [ "$EXPECTED_REPOSITORY_SHA" != "b7d50e2fa3983984b56eed5c13699663b4a8221e4dcf4b98b112c9cf24ffb7e7" ] || \
+   [ "$EXPECTED_REPOSITORY_SHA" != "08e3d47f0234986de30873c8ad53cba761446cc54e93207ca19a9160b561ba06" ] || \
    [ "$INVENTORY_RESCUED_SHA" != "$EXPECTED_RESCUED_SHA" ] || \
    [ "$ACTUAL_NORMALIZED_SHA" != "$EXPECTED_NORMALIZED_SHA" ] || \
    [ "$ACTUAL_REPOSITORY_SHA" != "$EXPECTED_REPOSITORY_SHA" ]; then
