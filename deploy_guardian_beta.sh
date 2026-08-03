@@ -105,7 +105,12 @@ restore_units() {
 rollback_release() {
   log "restoring prior release and unit files"
   if [ -n "$OLD_TARGET" ]; then
-    ln -s "$OLD_TARGET" "$BASE_DIR/.rollback.$RELEASE_ID" || return 1
+    case "$OLD_TARGET" in
+      "$RELEASES_DIR"/*) ;;
+      *) echo "prior release is outside the immutable release tree" >&2; return 1 ;;
+    esac
+    ln -s "releases/$(basename "$OLD_TARGET")" \
+      "$BASE_DIR/.rollback.$RELEASE_ID" || return 1
     mv -Tf "$BASE_DIR/.rollback.$RELEASE_ID" "$CURRENT_LINK" || return 1
     ln -sfn current/app.py "$BASE_DIR/app.py" || return 1
     restore_units || return 1
@@ -314,7 +319,9 @@ promote_release() {
   for timer in health enhance audit report; do
     install -m 0644 "$RELEASE_DIR/systemd/echo-guardian-beta-$timer.timer" "/etc/systemd/system/echo-guardian-beta-$timer.timer" || return 1
   done
-  ln -s "$RELEASE_DIR" "$BASE_DIR/.current.$RELEASE_ID" || return 1
+  # A relative link resolves both on the host and inside the read-only /opt
+  # bind mount; an absolute /home link would be hidden by ProtectHome=tmpfs.
+  ln -s "releases/$RELEASE_ID" "$BASE_DIR/.current.$RELEASE_ID" || return 1
   mv -Tf "$BASE_DIR/.current.$RELEASE_ID" "$CURRENT_LINK" || return 1
   ln -sfn current/app.py "$BASE_DIR/app.py" || return 1
   systemctl daemon-reload || return 1

@@ -153,6 +153,9 @@ def test_deploy_gate_contains_staging_and_rollback():
     assert "-v repository_sha=\"$EXPECTED_REPOSITORY_SHA\" >/dev/null <<'SQL'" in text
     assert 'ln -sfn current/app.py "$BASE_DIR/app.py"' in text
     assert "backup_units" in text and "restore_units" in text
+    assert 'ln -s "releases/$RELEASE_ID"' in text
+    assert 'ln -s "releases/$(basename "$OLD_TARGET")"' in text
+    assert '"$RELEASES_DIR"/*' in text
     assert '--property="BindReadOnlyPaths=$RELEASE_DIR:$STAGING_MOUNT"' in text
     assert 'STAGING_UNIT="echo-guardian-beta-staging-$RELEASE_ID"' in text
     assert 'python3 "$CURRENT_LINK/smoke_live.py"' in text
