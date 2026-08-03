@@ -92,6 +92,13 @@ def test_service_uses_peer_auth_and_systemd_credentials():
     assert "NoNewPrivileges=true" in text
     assert "ProtectHome=tmpfs" in text and "BindReadOnlyPaths=" in text
     assert "ProtectHome=tmpfs" in job_text and "BindReadOnlyPaths=" in job_text
+    expected_bind = (
+        "BindReadOnlyPaths=/home/forge/echo-guardian-beta:"
+        "/opt/echo-guardian-beta-runtime"
+    )
+    assert expected_bind in text and expected_bind in job_text
+    assert "WorkingDirectory=/opt/echo-guardian-beta-runtime/current" in text
+    assert "WorkingDirectory=/opt/echo-guardian-beta-runtime/current" in job_text
     assert "LoadCredential=" not in job_text
 
 
@@ -126,7 +133,10 @@ def test_deploy_gate_contains_staging_and_rollback():
     assert '[ -L "$TOKEN_FILE" ]' in text
     assert "root:root:400" in text
     assert '"$TEST_PYTHON" -m pytest' in text
-    assert 'sudo -u "$RUN_USER" "$RELEASE_DIR/.venv/bin/python"' in text
+    assert 'systemd-run --quiet --wait --pipe --unit="$PREFLIGHT_UNIT"' in text
+    assert '/usr/bin/env "$STAGING_MOUNT/.venv/bin/python" -c' in text
+    assert "--only-binary=:all:" in text
+    assert '--requirement "$RELEASE_DIR/requirements.txt"' in text
     assert 'install -d -m 0755 "$BASE_DIR" "$RELEASES_DIR"' in text
     assert 'mkdir -m 0755 "$RELEASE_DIR"' in text
     assert 'psql --single-transaction -v ON_ERROR_STOP=1 -d echo' in text
@@ -141,6 +151,8 @@ def test_deploy_gate_contains_staging_and_rollback():
     assert "-v repository_sha=\"$EXPECTED_REPOSITORY_SHA\" >/dev/null <<'SQL'" in text
     assert 'ln -sfn current/app.py "$BASE_DIR/app.py"' in text
     assert "backup_units" in text and "restore_units" in text
+    assert '--property="BindReadOnlyPaths=$RELEASE_DIR:$STAGING_MOUNT"' in text
+    assert 'STAGING_UNIT="echo-guardian-beta-staging-$RELEASE_ID"' in text
     assert 'python3 "$CURRENT_LINK/smoke_live.py"' in text
     assert 'record_receipt production_candidate_active "$RELEASE_DIR"' in text
     assert "systemd-analyze verify" in text

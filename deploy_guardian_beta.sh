@@ -15,10 +15,12 @@ D1_SQLITE=/mnt/cf_d1/d1_databases/echo-guardian-beta/echo-guardian-beta.sqlite3
 NORMALIZED_SOURCE=/home/forge/cf-migration-recovered-guardian-20260802/echo-guardian-beta/source/index.js
 TOKEN_DIR=/etc/echo/credentials/echo-guardian-beta
 TOKEN_FILE=$TOKEN_DIR/write-token
+RUNTIME_MOUNT=/opt/echo-guardian-beta-runtime
+STAGING_MOUNT=/opt/echo-guardian-beta-staging
 TEST_PYTHON="${GUARDIAN_TEST_PYTHON:-/home/forge/echo-worker-server/venv/bin/python}"
 RELEASE_ID="$(date -u +%Y%m%dT%H%M%S%NZ)-$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || echo source)"
 RELEASE_DIR="$RELEASES_DIR/$RELEASE_ID"
-STAGING_PID=""
+STAGING_UNIT=""
 OLD_TARGET=""
 UNIT_BACKUP_DIR="$BASE_DIR/unit-backups/$RELEASE_ID"
 EXPECTED_RESCUED_SHA=""
@@ -35,9 +37,9 @@ UNIT_FILES=(
 
 log() { printf '[guardian-deploy %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 cleanup() {
-  if [ -n "$STAGING_PID" ]; then
-    kill "$STAGING_PID" 2>/dev/null || true
-    wait "$STAGING_PID" 2>/dev/null || true
+  if [ -n "$STAGING_UNIT" ]; then
+    systemctl stop "$STAGING_UNIT.service" >/dev/null 2>&1 || true
+    systemctl reset-failed "$STAGING_UNIT.service" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -179,7 +181,11 @@ if [ "$EXPECTED_RESCUED_SHA" != "5f7afb16ed7daea81022ffb0e458e369f5d425a7f82c063
 fi
 python3 -c "import glob,py_compile; [py_compile.compile(path,doraise=True) for path in glob.glob('$RELEASE_DIR/*.py')]"
 "$TEST_PYTHON" -m pytest -q --confcutdir="$RELEASE_DIR" "$RELEASE_DIR/tests"
-python3 -m venv --system-site-packages "$RELEASE_DIR/.venv"
+python3 -m venv "$RELEASE_DIR/.venv"
+PIP_CACHE_DIR="$BASE_DIR/pip-cache" \
+  "$RELEASE_DIR/.venv/bin/python" -m pip install \
+    --disable-pip-version-check --no-input --only-binary=:all: \
+    --requirement "$RELEASE_DIR/requirements.txt" >/dev/null
 if ! getent passwd "$RUN_USER" >/dev/null; then
   useradd --system --home-dir /nonexistent --no-create-home \
     --shell /usr/sbin/nologin --user-group "$RUN_USER"
@@ -188,7 +194,17 @@ if [ "$(id -Gn "$RUN_USER")" != "$RUN_USER" ]; then
   echo "dedicated service identity has unexpected supplemental groups" >&2
   exit 3
 fi
-sudo -u "$RUN_USER" "$RELEASE_DIR/.venv/bin/python" -c "import fastapi,psycopg2,uvicorn; assert fastapi.__version__ == '0.136.1'; assert uvicorn.__version__ == '0.46.0'; assert psycopg2.__version__.split()[0] == '2.9.12'"
+PREFLIGHT_UNIT="echo-guardian-beta-preflight-$RELEASE_ID"
+systemd-run --quiet --wait --pipe --unit="$PREFLIGHT_UNIT" \
+  --property=Type=oneshot \
+  --property="User=$RUN_USER" \
+  --property="Group=$RUN_USER" \
+  --property="WorkingDirectory=$STAGING_MOUNT" \
+  --property="BindReadOnlyPaths=$RELEASE_DIR:$STAGING_MOUNT" \
+  --property=ProtectHome=tmpfs \
+  --property=NoNewPrivileges=yes \
+  /usr/bin/env "$STAGING_MOUNT/.venv/bin/python" -c "import fastapi,psycopg2,uvicorn; assert fastapi.__version__ == '0.136.1'; assert uvicorn.__version__ == '0.46.0'; assert psycopg2.__version__.split()[0] == '2.9.12'"
+systemctl reset-failed "$PREFLIGHT_UNIT.service" >/dev/null 2>&1 || true
 systemd-analyze verify "$RELEASE_DIR/systemd/echo-guardian-beta.service" "$RELEASE_DIR/systemd/echo-guardian-beta-job@.service" "$RELEASE_DIR/systemd/echo-guardian-beta-health.timer" "$RELEASE_DIR/systemd/echo-guardian-beta-enhance.timer" "$RELEASE_DIR/systemd/echo-guardian-beta-audit.timer" "$RELEASE_DIR/systemd/echo-guardian-beta-report.timer"
 systemd-analyze calendar '*:02/5' '*:15/30' '*-*-* 03/6:00:00 UTC' '*-*-* 09:00:00 UTC' >/dev/null
 log "release staged, compiled, and unit-tested: $RELEASE_ID"
@@ -221,17 +237,23 @@ log "additive schema and D1 import gate verified all seven source tables: $verif
 record_receipt provenance_verified
 
 STAGING_TOKEN="guardian-beta-staging-smoke"
-(
-  cd "$RELEASE_DIR"
-  exec sudo -u "$RUN_USER" env \
-    "ECHO_GUARDIAN_DATABASE_DSN=dbname=echo user=$DB_ROLE" \
-    "ECHO_GUARDIAN_TARGETS_FILE=$RELEASE_DIR/config/targets.json" \
-    "ECHO_GUARDIAN_WRITE_TOKEN=$STAGING_TOKEN" \
-    ECHO_GUARDIAN_MAX_FANOUT=8 \
-    ECHO_GUARDIAN_PROBE_TIMEOUT=3 \
-    "$RELEASE_DIR/.venv/bin/python" -m uvicorn app:app --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning --no-access-log
-) &
-STAGING_PID=$!
+STAGING_UNIT="echo-guardian-beta-staging-$RELEASE_ID"
+systemd-run --quiet --unit="$STAGING_UNIT" \
+  --property="User=$RUN_USER" \
+  --property="Group=$RUN_USER" \
+  --property="WorkingDirectory=$STAGING_MOUNT" \
+  --property="BindReadOnlyPaths=$RELEASE_DIR:$STAGING_MOUNT" \
+  --property=ProtectHome=tmpfs \
+  --property=ProtectSystem=strict \
+  --property=PrivateTmp=yes \
+  --property=PrivateDevices=yes \
+  --property=NoNewPrivileges=yes \
+  --setenv="ECHO_GUARDIAN_DATABASE_DSN=dbname=echo user=$DB_ROLE" \
+  --setenv="ECHO_GUARDIAN_TARGETS_FILE=$STAGING_MOUNT/config/targets.json" \
+  --setenv="ECHO_GUARDIAN_WRITE_TOKEN=$STAGING_TOKEN" \
+  --setenv=ECHO_GUARDIAN_MAX_FANOUT=8 \
+  --setenv=ECHO_GUARDIAN_PROBE_TIMEOUT=3 \
+  /usr/bin/env "$STAGING_MOUNT/.venv/bin/python" -m uvicorn app:app --host 127.0.0.1 --port "$STAGING_PORT" --log-level warning --no-access-log
 wait_for_health "$STAGING_PORT" || {
   log "staging failed readiness; production remains untouched"
   exit 4
@@ -247,9 +269,9 @@ if ! python3 "$RELEASE_DIR/smoke_live.py" "${staging_args[@]}"; then
 fi
 log "staging smoke GREEN"
 record_receipt staging_smoke
-kill "$STAGING_PID" 2>/dev/null || true
-wait "$STAGING_PID" 2>/dev/null || true
-STAGING_PID=""
+systemctl stop "$STAGING_UNIT.service"
+systemctl reset-failed "$STAGING_UNIT.service" >/dev/null 2>&1 || true
+STAGING_UNIT=""
 
 if [ -L "$CURRENT_LINK" ]; then
   OLD_TARGET="$(readlink -f "$CURRENT_LINK")"

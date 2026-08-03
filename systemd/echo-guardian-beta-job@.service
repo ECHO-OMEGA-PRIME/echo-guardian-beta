@@ -6,19 +6,19 @@ After=network-online.target postgresql.service echo-guardian-beta.service
 Type=oneshot
 User=echo-guardian-beta
 Group=echo-guardian-beta
-WorkingDirectory=/home/forge/echo-guardian-beta/current
+WorkingDirectory=/opt/echo-guardian-beta-runtime/current
 Environment="ECHO_GUARDIAN_DATABASE_DSN=dbname=echo user=echo-guardian-beta"
-Environment=ECHO_GUARDIAN_TARGETS_FILE=/home/forge/echo-guardian-beta/current/config/targets.json
+Environment=ECHO_GUARDIAN_TARGETS_FILE=/opt/echo-guardian-beta-runtime/current/config/targets.json
 Environment=ECHO_GUARDIAN_MAX_FANOUT=8
 Environment=ECHO_GUARDIAN_PROBE_TIMEOUT=3
-ExecStart=/usr/bin/env /home/forge/echo-guardian-beta/current/.venv/bin/python guardian_cli.py %i
+ExecStart=/usr/bin/env /opt/echo-guardian-beta-runtime/current/.venv/bin/python guardian_cli.py %i
 TimeoutStartSec=180
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=tmpfs
-BindReadOnlyPaths=/home/forge/echo-guardian-beta
+BindReadOnlyPaths=/home/forge/echo-guardian-beta:/opt/echo-guardian-beta-runtime
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
