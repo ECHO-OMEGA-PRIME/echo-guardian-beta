@@ -1,0 +1,31 @@
+[Unit]
+Description=Echo Guardian Beta %i scheduled job
+After=network-online.target postgresql.service echo-guardian-beta.service
+
+[Service]
+Type=oneshot
+User=echo-guardian-beta
+Group=echo-guardian-beta
+WorkingDirectory=/home/forge/echo-guardian-beta/current
+Environment="ECHO_GUARDIAN_DATABASE_DSN=dbname=echo user=echo-guardian-beta"
+Environment=ECHO_GUARDIAN_TARGETS_FILE=/home/forge/echo-guardian-beta/current/config/targets.json
+Environment=ECHO_GUARDIAN_MAX_FANOUT=8
+Environment=ECHO_GUARDIAN_PROBE_TIMEOUT=3
+ExecStart=/usr/bin/env /home/forge/echo-guardian-beta/current/.venv/bin/python guardian_cli.py %i
+TimeoutStartSec=180
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/forge/echo-guardian-beta
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryMax=256M
+MemoryHigh=192M
+CPUWeight=60
+TasksMax=96

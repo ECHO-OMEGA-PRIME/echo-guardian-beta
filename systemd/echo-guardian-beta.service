@@ -1,0 +1,44 @@
+[Unit]
+Description=Echo Guardian Beta private-cluster API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=echo-guardian-beta
+Group=echo-guardian-beta
+WorkingDirectory=/home/forge/echo-guardian-beta/current
+Environment="ECHO_GUARDIAN_DATABASE_DSN=dbname=echo user=echo-guardian-beta"
+Environment=ECHO_GUARDIAN_TARGETS_FILE=/home/forge/echo-guardian-beta/current/config/targets.json
+Environment=ECHO_GUARDIAN_MAX_FANOUT=8
+Environment=ECHO_GUARDIAN_PROBE_TIMEOUT=3
+Environment=ECHO_GUARDIAN_WRITE_RATE_LIMIT=10
+Environment=ECHO_GUARDIAN_READ_RATE_LIMIT=120
+Environment=ECHO_GUARDIAN_AUTH_FAILURE_RATE_LIMIT=30
+Environment=ECHO_GUARDIAN_PREFLIGHT_RATE_LIMIT=60
+Environment=ECHO_GUARDIAN_CORS_ORIGINS=https://throne.echo-op.com,https://fleet.echo-op.com
+LoadCredential=guardian_write_token:/etc/echo/credentials/echo-guardian-beta/write-token
+ExecStart=/usr/bin/env /home/forge/echo-guardian-beta/current/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8462 --log-level info --no-access-log
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/forge/echo-guardian-beta
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryMax=256M
+MemoryHigh=192M
+CPUWeight=75
+TasksMax=96
+
+[Install]
+WantedBy=multi-user.target

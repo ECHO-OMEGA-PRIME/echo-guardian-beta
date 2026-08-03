@@ -1,0 +1,75 @@
+{
+  "worker_name": "echo-guardian-beta",
+  "replacement": {
+    "service_dir": "/home/forge/echo-guardian-beta",
+    "unit": "echo-guardian-beta.service",
+    "port": 8462,
+    "staging_port": 8463,
+    "runtime": "FastAPI/PostgreSQL/systemd",
+    "service_identity": "dedicated echo-guardian-beta OS and peer-authenticated PostgreSQL roles",
+    "write_credential": "dedicated value-only systemd credential; no sovereign key reuse"
+  },
+  "provenance": {
+    "rescued_deployed_javascript_sha256": "5f7afb16ed7daea81022ffb0e458e369f5d425a7f82c0636f06e653d19b15f3c",
+    "normalized_recovered_bundle_sha256": "134eabf49017cc742c5b13bfca339c271f846bc2319b704a191509c69339e3d8",
+    "repository_typescript_sha256": "b7d50e2fa3983984b56eed5c13699663b4a8221e4dcf4b98b112c9cf24ffb7e7",
+    "d1_sqlite_sha256": "b0e57c3be6a3a0de9f590f369f911ea5fadd7918d533492a285a12b1d73c5e51",
+    "repository_commit": "0e0268e7abc17ab44a2df3702b559fb7d8a8c54a",
+    "repository_blob_id": "a88c97f9ff1c3a45d0362b4cd5c03a17e5c57bd8",
+    "relationship": "The inventory hash covers canonical rescued deployed JavaScript, the normalized-bundle hash covers the recovered Worker bundle, the repository hash covers preserved TypeScript source, and the D1 hash covers rescued state. Each identity is verified independently; no byte-equivalence claim is made between distinct artifacts."
+  },
+  "d1_source_counts": {
+    "creations": 0,
+    "enhancement_queue": 38,
+    "enhancements": 0,
+    "guardian_state": 0,
+    "health_checks": 461520,
+    "incidents": 0,
+    "partner_health": 3202
+  },
+  "d1_affinity_contract": {
+    "creations": ["INTEGER", "TEXT", "TEXT", "TEXT", "INTEGER", "TEXT", "INTEGER", "TEXT"],
+    "enhancement_queue": ["INTEGER", "TEXT", "INTEGER", "TEXT", "TEXT", "TEXT", "TEXT", "TEXT", "TEXT"],
+    "enhancements": ["INTEGER", "TEXT", "TEXT", "TEXT", "TEXT", "TEXT", "TEXT", "TEXT", "TEXT", "INTEGER", "INTEGER", "TEXT"],
+    "guardian_state": ["TEXT", "TEXT", "TEXT"],
+    "health_checks": ["INTEGER", "TEXT", "TEXT", "INTEGER", "INTEGER", "TEXT", "TEXT", "TEXT"],
+    "incidents": ["INTEGER", "TEXT", "TEXT", "TEXT", "TEXT", "INTEGER", "TEXT", "TEXT"],
+    "partner_health": ["INTEGER", "TEXT", "TEXT", "INTEGER", "INTEGER", "TEXT", "INTEGER", "TEXT"]
+  },
+  "routes": {
+    "GET": ["/", "/health", "/fleet", "/incidents", "/enhancements", "/queue", "/creations", "/partner", "/stats", "/uptime/{worker}"],
+    "POST": ["/trigger/health", "/trigger/enhance", "/trigger/audit", "/trigger/report"],
+    "additional_private": ["/diagnostics"]
+  },
+  "non_generic_route_coverage": {
+    "source": 12,
+    "implemented": 12,
+    "percent": 100,
+    "evidence": "The preserved Beta src/index.ts is byte-identical to the independently migrated Alpha route source. Fourteen total path literals were enumerated structurally; excluding / and /health leaves twelve non-generic routes, all present in this runtime."
+  },
+  "schedules": {
+    "health": {"worker_cron": "2/5 * * * *", "systemd": "*:02/5"},
+    "enhance": {"worker_cron": "15/30 * * * *", "systemd": "*:15/30"},
+    "audit": {"worker_cron": "0 3/6 * * *", "systemd": "*-*-* 03/6:00:00 UTC"},
+    "report": {"worker_cron": "0 9 * * *", "systemd": "*-*-* 09:00:00 UTC"}
+  },
+  "bindings": {
+    "DB": "PostgreSQL schema cf_echo_guardian_beta, seeded from the hash-pinned D1 artifact with declared INTEGER/TEXT affinities preserved",
+    "CACHE": "guardian_state plus job_runs idempotency state",
+    "SVC_ENGINE_RUNTIME": "deliberately removed from autonomous mutation; private targets are probed directly",
+    "SVC_SHARED_BRAIN": "runtime report is persisted locally; the scoped builder lane performs the verified SDK registration",
+    "SVC_BUILDER": "enhancement_queue with approval_required status",
+    "SVC_DAEMON": "systemd timers and advisory locks",
+    "SVC_PARTNER": "echo-guardian-alpha identity retained; optional probe remains unset until its exact private endpoint is approved"
+  },
+  "deliberate_deltas": [
+    "All non-health HTTP routes are private and require constant-time bearer authentication.",
+    "Fleet fan-out is bounded and limited to allowlisted private-cluster targets.",
+    "Automatic source, deploy, repository, worker-creation, and partner-resurrection mutations are disabled; candidates are queued for review.",
+    "Systemd timers replace the Worker scheduled handler and add jitter plus single-flight advisory locks.",
+    "Cloudflare and GitHub write credentials are not required by the replacement runtime.",
+    "The imported 144-worker manifest is retained; only configured private-cluster targets are actively probed.",
+    "Shared Brain reporting is completed by the scoped builder registration path, not an embedded privileged runtime client.",
+    "Partner recovery remains disabled until an exact private Alpha endpoint and approved deploy gate are registered."
+  ]
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Echo Guardian Beta six-hour deep audit
+
+[Timer]
+OnCalendar=*-*-* 03/6:00:00 UTC
+RandomizedDelaySec=30s
+Persistent=true
+Unit=echo-guardian-beta-job@audit.service
+
+[Install]
+WantedBy=timers.target

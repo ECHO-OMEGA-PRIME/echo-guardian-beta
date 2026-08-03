@@ -1,0 +1,58 @@
+{
+  "source": "src/index.ts",
+  "worker_count": 144,
+  "tiers": {
+    "critical": [
+      "echo-engine-runtime", "echo-shared-brain", "echo-doctrine-forge", "echo-knowledge-forge",
+      "echo-chat", "echo-autonomous-daemon", "echo-autonomous-builder", "echo-diagnostics-agent",
+      "echo-speak-cloud", "echo-sdk-gateway", "echo-arcanum", "echo-vault-api",
+      "echo-build-orchestrator", "omniscient-sync", "echo-ai-orchestrator", "echo-analytics-engine",
+      "echo-report-generator", "echo-swarm-brain", "echo-email-sender"
+    ],
+    "saas": [
+      "echo-crm", "echo-helpdesk", "echo-booking", "echo-invoice", "echo-forms", "echo-hr",
+      "echo-contracts", "echo-lms", "echo-email-marketing", "echo-surveys", "echo-knowledge-base",
+      "echo-workflow-automation", "echo-social-media", "echo-document-manager", "echo-live-chat",
+      "echo-link-shortener", "echo-feedback-board", "echo-newsletter", "echo-web-analytics",
+      "echo-waitlist", "echo-reviews", "echo-signatures", "echo-affiliate", "echo-proposals",
+      "echo-gamer-companion", "echo-qr-menu", "echo-podcast", "echo-calendar", "echo-payroll",
+      "echo-recruiting", "echo-compliance", "echo-timesheet", "echo-expense", "echo-okr",
+      "echo-finance-ai", "echo-home-ai", "echo-shepherd-ai", "echo-call-center", "echo-intel-hub",
+      "echo-inventory", "echo-project-manager", "echo-documents", "echo-workflows", "echo-finance",
+      "echo-invoicing", "echo-appointments", "echo-hr-management", "echo-project-management"
+    ],
+    "bots": [
+      "echo-x-bot", "echo-telegram", "echo-linkedin", "echo-reddit-bot", "echo-instagram",
+      "echo-slack", "echo-whatsapp", "echo-messenger", "echo-messaging-gateway", "echo-bot-auditor"
+    ],
+    "infrastructure": [
+      "echo-config-manager", "echo-alert-router", "echo-log-aggregator", "echo-rate-limiter",
+      "echo-cron-orchestrator", "echo-api-gateway", "echo-notification-hub", "echo-distributed-tracing",
+      "echo-service-registry", "echo-health-dashboard", "echo-circuit-breaker",
+      "echo-deployment-coordinator", "echo-incident-manager", "echo-cost-optimizer", "echo-status-page",
+      "echo-feature-flags", "echo-mcp-server", "echo-mcp-preload"
+    ],
+    "security": [
+      "echo-prometheus-ai", "echo-prometheus-cloud", "echo-prometheus-surveillance", "echo-gs343",
+      "echo-343-scanner", "echo-phoenix-cloud"
+    ],
+    "services": [
+      "echo-paypal", "echo-crypto-trader", "echo-price-alerts", "echo-tax-return", "echo-coin-rewards",
+      "echo-model-host", "echo-drive-intelligence", "echo-county-records", "echo-speak-cloud",
+      "echo-beta-portal", "ept-api", "echo-memory-prime", "echo-graph-rag", "echo-immortality-vault",
+      "echo-a2a-protocol", "echo-agent-coordinator", "echo-agentic-engine", "echo-customer-success",
+      "echo-data-room", "echo-asset-manager", "echo-document-delivery", "echo-ab-testing-engine",
+      "echo-vendor-manager"
+    ],
+    "client": [
+      "billymc-api", "billymc-voice", "profinish-api", "bgat-chat-api", "bree-chat",
+      "cleanbrees-api", "cleanbrees-convoai", "cleanbrees-messenger", "bgat-api-gateway",
+      "barking-lot-facebook", "rah-api"
+    ],
+    "data": [
+      "shadowglass-v8-warpspeed", "echo-landman-pipeline", "echo-darkweb-intelligence",
+      "echo-knowledge-harvester", "echo-knowledge-scout", "echo-news-scraper",
+      "data-acquisition-pipeline", "echo-domain-harvester", "echo-sec-scraper"
+    ]
+  }
+}

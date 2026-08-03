@@ -1,0 +1,11 @@
+[Unit]
+Description=Echo Guardian Beta daily 09:00 UTC report
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 UTC
+RandomizedDelaySec=30s
+Persistent=true
+Unit=echo-guardian-beta-job@report.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,5 @@
+{
+  "echo-sentinel-chat": "http://127.0.0.1:8160/health",
+  "echo-workers": "http://127.0.0.1:8000/health",
+  "sovereign-web": "http://127.0.0.1:8766/health"
+}

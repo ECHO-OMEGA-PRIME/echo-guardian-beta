@@ -1,0 +1,11 @@
+[Unit]
+Description=Echo Guardian Beta five-minute health sweep
+
+[Timer]
+OnCalendar=*:02/5
+RandomizedDelaySec=20s
+Persistent=true
+Unit=echo-guardian-beta-job@health.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Echo Guardian Beta thirty-minute enhancement scan
+
+[Timer]
+OnCalendar=*:15/30
+RandomizedDelaySec=20s
+Persistent=true
+Unit=echo-guardian-beta-job@enhance.service
+
+[Install]
+WantedBy=timers.target
