@@ -250,6 +250,7 @@ def test_live_smoke_uses_imported_worker_with_history():
     assert 'parser.add_argument("--uptime-worker", default="")' in text
     assert "bool(fleet_workers)" in text
     assert "urllib.parse.quote(history_worker, safe='')" in text
+    assert "?hours=8760" in text
     assert "valid_history = (" in text
     assert 'int(payload.get("checks") or 0) > 0' in text
     assert 'require(valid_history, "imported uptime history"' in text

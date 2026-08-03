@@ -191,7 +191,9 @@ def main() -> int:
         fleet_workers[0].get("worker_name", "")
     )
     require(bool(history_worker), "imported fleet worker identity", 200)
-    uptime_path = f"/uptime/{urllib.parse.quote(history_worker, safe='')}"
+    uptime_path = (
+        f"/uptime/{urllib.parse.quote(history_worker, safe='')}?hours=8760"
+    )
     status, headers, payload = request_json(args.base, uptime_path, token=token)
     valid_history = (
         status == 200

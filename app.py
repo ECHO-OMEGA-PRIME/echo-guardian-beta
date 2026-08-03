@@ -438,7 +438,7 @@ def stats() -> dict[str, Any]:
 
 
 @app.get("/uptime/{worker}")
-def uptime(worker: str, hours: int = Query(24, ge=1, le=720)) -> dict[str, Any]:
+def uptime(worker: str, hours: int = Query(24, ge=1, le=8760)) -> dict[str, Any]:
     if not WORKER_RE.fullmatch(worker):
         raise HTTPException(status_code=400, detail="invalid worker name")
     data = get_service().store.uptime(worker, hours)

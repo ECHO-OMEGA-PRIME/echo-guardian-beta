@@ -322,7 +322,7 @@ class Database:
         )
 
     def uptime(self, worker_name: str, hours: int = 24) -> dict[str, Any]:
-        since = (utcnow() - timedelta(hours=max(1, min(hours, 720)))).isoformat()
+        since = (utcnow() - timedelta(hours=max(1, min(hours, 8760)))).isoformat()
         row = self.query_one(
             f"""
             SELECT count(*)::int AS checks,

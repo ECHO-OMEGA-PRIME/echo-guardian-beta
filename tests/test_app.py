@@ -272,6 +272,19 @@ def test_worker_identifier_is_validated_before_store(client):
     assert service.store.uptime_calls == []
 
 
+def test_uptime_window_covers_rescued_annual_history(client):
+    test_client, _ = client
+    response = test_client.get(
+        "/uptime/echo-workers?hours=8760", headers=auth_headers()
+    )
+    assert response.status_code == 200
+    assert response.json()["hours"] == 8760
+    too_wide = test_client.get(
+        "/uptime/echo-workers?hours=8761", headers=auth_headers()
+    )
+    assert too_wide.status_code == 422
+
+
 def test_degraded_health_is_503(client):
     test_client, service = client
     service.store.healthy = False
